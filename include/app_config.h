@@ -52,5 +52,6 @@ constexpr uint32_t kWeatherRefreshMs = 15 * 60 * 1000;
 constexpr uint32_t kWeatherRetryMs = 60000;
 constexpr uint32_t kSensorStaleMs = 120000;
 constexpr uint32_t kWeatherStaleMs = 30 * 60 * 1000;
-constexpr uint8_t kBrightness = 128;
+constexpr uint8_t kBrightness = 64;
+constexpr uint8_t kDimBrightness = 32;
 }  // namespace config

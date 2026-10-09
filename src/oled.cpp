@@ -23,6 +23,13 @@ constexpr uint8_t kScl = 32;
 U8G2_SSD1309_128X64_NONAME0_F_SW_I2C display(U8G2_R0, kScl, kSda, U8X8_PIN_NONE);
 bool ready = false;
 time_t lastSecond = -1;
+bool dimmed = false;
+constexpr uint8_t kNormalContrast = 64;
+constexpr uint8_t kDimContrast = 1;
+
+uint8_t contrast() {
+  return dimmed ? kDimContrast : kNormalContrast;
+}
 #ifdef CLOCK_OLED_PIN_TEST
 bool swapped = false;
 uint32_t modeStarted = 0;
@@ -57,7 +64,7 @@ void oled::begin(const environment::Snapshot& data) {
     Serial.println("OLED: software I2C setup failed");
     return;
   }
-  display.setContrast(128);
+  display.setContrast(contrast());
   Serial.printf("OLED: size=%ux%u x_offset=%u\n",
                 display.getDisplayWidth(), display.getDisplayHeight(),
                 display.getU8x8()->x_offset);
@@ -68,6 +75,14 @@ void oled::begin(const environment::Snapshot& data) {
 #endif
   update(data);
   Serial.println("OLED: frame sent without ACK checking; check screen visually");
+}
+
+void oled::setDimmed(bool enabled) {
+  dimmed = enabled;
+  if (!ready) return;
+  // Contrast changes take effect immediately, without resending the frame.
+  display.setContrast(contrast());
+  Serial.println(dimmed ? "OLED: dim" : "OLED: normal");
 }
 
 void oled::update(const environment::Snapshot& data) {
@@ -81,7 +96,7 @@ void oled::update(const environment::Snapshot& data) {
     u8x8_SetPin_SW_I2C(display.getU8x8(), swapped ? 32 : 33,
                       swapped ? 33 : 32, U8X8_PIN_NONE);
     display.begin();
-    display.setContrast(128);
+    display.setContrast(contrast());
     modeStarted = millis();
     lastSecond = -1;
     Serial.printf("OLED pin test: %s\n", testLabel());

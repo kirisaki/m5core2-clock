@@ -10,6 +10,9 @@
 
 namespace {
 app::State state;
+bool dimmed = false;
+constexpr uint8_t kButtonVibration = 200;
+constexpr uint32_t kButtonVibrationMs = 160;
 }  // namespace
 
 void setup() {
@@ -21,6 +24,7 @@ void setup() {
   M5.begin(cfg);
   M5.Display.setRotation(1);
   M5.Display.setBrightness(config::kBrightness);
+  M5.Power.setVibration(0);
 
   clock_service::begin();
   ui::begin();
@@ -31,6 +35,16 @@ void setup() {
 
 void loop() {
   M5.update();
+  if (M5.BtnB.wasPressed()) {
+    dimmed = !dimmed;
+    oled::setDimmed(dimmed);
+    M5.Display.setBrightness(dimmed ? config::kDimBrightness : config::kBrightness);
+    // Complete a short pulse before display transfers can extend its duration.
+    // All PMIC/I2C operations stay on the main task.
+    M5.Power.setVibration(kButtonVibration);
+    delay(kButtonVibrationMs);
+    M5.Power.setVibration(0);
+  }
   clock_service::update();
   // One queue consumer shares the same snapshot with both displays.
   static environment::Snapshot snapshot;
