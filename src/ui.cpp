@@ -8,6 +8,7 @@
 #include "app_config.h"
 #include "clock_service.h"
 #include "network.h"
+#include "sensor_history.h"
 
 namespace {
 constexpr uint32_t kBackground = 0x101820;
@@ -17,11 +18,13 @@ constexpr uint32_t kMuted = 0xA0B0C0;
 constexpr uint32_t kAccent = 0x65D6C4;
 M5Canvas canvas(&M5.Display);
 bool ready = false;
-bool forecastOpen = false;
+enum class Screen { Home, Forecast, History };
+Screen screen = Screen::Home;
 bool dirty = true;
 time_t lastSecond = -1;
 network::Status lastStatus = network::Status::Unconfigured;
 environment::Snapshot data;
+environment::SensorHistory history;
 size_t forecastIndices[24];
 size_t forecastCount = 0;
 size_t page = 0;
@@ -244,6 +247,80 @@ void drawForecast() {
   small(status, 12, 220);
   small("Weather: Open-Meteo.com (CC BY 4.0)", 12, 231);
 }
+
+void drawHistoryPlot(bool temperature, int top, uint32_t nowMs) {
+  constexpr int left = 46;
+  constexpr int width = 260;
+  constexpr int height = 46;
+  const uint32_t color = temperature ? 0xFFD166 : 0x67BCFF;
+  float minimum = temperature ? 20 : 40;
+  float maximum = temperature ? 30 : 60;
+  if (history.size()) {
+    minimum = maximum = temperature ? history.at(0).temperature : history.at(0).humidity;
+    for (size_t i = 1; i < history.size(); ++i) {
+      const float value = temperature ? history.at(i).temperature : history.at(i).humidity;
+      if (value < minimum) minimum = value;
+      if (value > maximum) maximum = value;
+    }
+    // Keep small fluctuations readable without magnifying noise excessively.
+    const float padding = temperature ? 1.0f : 5.0f;
+    minimum = std::floor(minimum - padding);
+    maximum = std::ceil(maximum + padding);
+    if (!temperature) {
+      if (minimum < 0) minimum = 0;
+      if (maximum > 100) maximum = 100;
+    }
+  }
+
+  small(temperature ? "TEMPERATURE / C" : "HUMIDITY / % RH", 12, top - 20, color);
+  char current[24] = "--";
+  if (data.sensor.available) {
+    snprintf(current, sizeof(current), "%.1f%s%s",
+             temperature ? data.sensor.temperature : data.sensor.humidity,
+             temperature ? " C" : " %", sensorStale() ? " OLD" : "");
+  }
+  canvas.setFont(&fonts::Font2);
+  canvas.setTextColor(color);
+  canvas.drawRightString(current, 308, top - 24);
+  char limit[16];
+  snprintf(limit, sizeof(limit), "%.0f", maximum);
+  small(limit, 12, top - 3);
+  snprintf(limit, sizeof(limit), "%.0f", minimum);
+  small(limit, 12, top + height - 7);
+  for (int tick = 0; tick <= 2; ++tick)
+    canvas.drawFastHLine(left, top + tick * height / 2, width + 1, kCard);
+  for (int tick = 0; tick <= 6; ++tick)
+    canvas.drawFastVLine(left + tick * width / 6, top, height + 1, kCard);
+
+  int previousX = 0, previousY = 0;
+  bool previous = false;
+  for (size_t i = 0; i < history.size(); ++i) {
+    const auto& sample = history.at(i);
+    const uint32_t age = nowMs - sample.receivedMs;
+    if (age > environment::SensorHistory::kWindowMs) continue;
+    const float value = temperature ? sample.temperature : sample.humidity;
+    const int x = left + width - static_cast<uint64_t>(age) * width / environment::SensorHistory::kWindowMs;
+    const int y = top + height - std::lround((value - minimum) * height / (maximum - minimum));
+    if (previous && sample.connected) canvas.drawLine(previousX, previousY, x, y, color);
+    canvas.fillCircle(x, y, 1, color);
+    previousX = x;
+    previousY = y;
+    previous = true;
+  }
+  if (!history.size()) small("Waiting for sensor data", 89, top + 19);
+}
+
+void drawHistory() {
+  label("< Back", 12, 10, kAccent);
+  label("Room history", 191, 10);
+  const uint32_t nowMs = millis();
+  drawHistoryPlot(true, 65, nowMs);
+  drawHistoryPlot(false, 153, nowMs);
+  small("-12h", 46, 204);
+  small("-6h", 167, 204);
+  small("Now", 289, 204);
+  small("Last 12h | 1 min samples | since boot", 12, 225);
+}
 }  // namespace
 
 bool ui::begin() {
@@ -258,32 +335,42 @@ bool ui::begin() {
   return ready;
 }
 
+void ui::setData(const environment::Snapshot& snapshot) {
+  data = snapshot;
+  history.observe(data, millis());
+  dirty = true;
+}
+
 void ui::update() {
   if (!ready) {
     return;
   }
-  if (network::receive(data)) dirty = true;
   const time_t second = time(nullptr);
+  if (second != lastSecond) history.expire(millis());
   forecastCount = environment::upcomingHours(data.weather, second, forecastIndices, 24);
   if (page * kHoursPerPage >= forecastCount) page = 0;
   const auto touch = M5.Touch.getDetail();
   if (touch.wasPressed()) {
-    if (!forecastOpen && touch.x >= kHomeWeatherLeft && touch.x < 312 &&
+    if (screen == Screen::Home && touch.x >= 8 && touch.x < 108 &&
         touch.y >= kHomeRowTop && touch.y < kHomeRowTop + kHomeRowHeight) {
-      forecastOpen = true;
+      screen = Screen::History;
+      dirty = true;
+    } else if (screen == Screen::Home && touch.x >= kHomeWeatherLeft && touch.x < 312 &&
+        touch.y >= kHomeRowTop && touch.y < kHomeRowTop + kHomeRowHeight) {
+      screen = Screen::Forecast;
       page = 0;
       dirty = true;
-    } else if (forecastOpen && touch.x >= 0 && touch.x < 100 &&
+    } else if (screen != Screen::Home && touch.x >= 0 && touch.x < 100 &&
                touch.y >= 0 && touch.y < 40) {
-      forecastOpen = false;
+      screen = Screen::Home;
       dirty = true;
-    } else if (forecastOpen && touch.y >= kForecastNavTop && touch.y < kForecastNavBottom) {
+    } else if (screen == Screen::Forecast && touch.y >= kForecastNavTop && touch.y < kForecastNavBottom) {
       if (touch.x < 110 && page) --page;
       if (touch.x > 220 && (page + 1) * kHoursPerPage < forecastCount) ++page;
       dirty = true;
     }
   }
-  if (forecastOpen && (touch.wasFlicked() || touch.wasDragged()) &&
+  if (screen == Screen::Forecast && (touch.wasFlicked() || touch.wasDragged()) &&
       touch.base_y >= 40 && touch.base_y < kForecastNavTop) {
     const int dx = touch.distanceX();
     const int dy = touch.distanceY();
@@ -293,18 +380,20 @@ void ui::update() {
     dirty = true;
   }
   const auto status = network::status();
-  if (!forecastOpen && (second != lastSecond || status != lastStatus)) {
+  if (screen == Screen::Home && (second != lastSecond || status != lastStatus)) {
     dirty = true;
   }
-  if (forecastOpen && second / 60 != lastSecond / 60) dirty = true;
+  if (screen != Screen::Home && second / 60 != lastSecond / 60) dirty = true;
   lastSecond = second;
   lastStatus = status;
   if (!dirty) {
     return;
   }
   canvas.fillScreen(kBackground);
-  if (forecastOpen) {
+  if (screen == Screen::Forecast) {
     drawForecast();
+  } else if (screen == Screen::History) {
+    drawHistory();
   } else {
     drawHome();
   }

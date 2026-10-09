@@ -43,6 +43,22 @@ int main(int argc, char** argv) {
   assert(weather.available && weather.count == 48 && !weather.isDay);
   assert(weather.current.code == 2 && weather.current.temperature == 12.5);
   assert(weather.hours[0].isDay == 0 && weather.hours[1].isDay == 1);
+  for (int i = 0; i < 2; ++i) {
+    doc["daily"]["time"].add(start + i * 86400);
+    doc["daily"]["sunrise"].add(start + i * 86400 + 6 * 3600);
+    doc["daily"]["sunset"].add(start + i * 86400 + 18 * 3600);
+  }
+  assert(parse(doc, weather) && weather.dayCount == 2);
+  assert(weather.days[1].sunrise == start + 86400 + 6 * 3600);
+  doc["daily"]["sunrise"][0] = nullptr;
+  assert(parse(doc, weather) && weather.days[0].sunrise == 0);
+  doc["daily"]["sunset"][0] = "bad time";
+  assert(!parse(doc, weather) && weather.days[0].sunset == start + 18 * 3600);
+  doc["daily"]["sunset"][0] = start + 18 * 3600;
+  doc["daily"]["sunrise"].as<JsonArray>().remove(1);
+  assert(!parse(doc, weather) && weather.dayCount == 2);
+  doc.remove("daily");
+  assert(parse(doc, weather) && weather.dayCount == 0);
   assert(nextHour(weather, start + 3599)->time == start + 3600);
   assert(nextHour(weather, start + 3600)->time == start + 7200);
   assert(nextHour(weather, start + 47 * 3600) == nullptr);

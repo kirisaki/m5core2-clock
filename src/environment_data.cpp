@@ -71,6 +71,24 @@ bool environment::parseWeather(const char* json, size_t size, Weather& result) {
     hour.rainProbability = rain[i].isNull() ? -1 : static_cast<int>(rain[i].as<float>());
     hour.isDay = daylight[i].isNull() ? -1 : daylight[i].as<int>();
   }
+  const JsonVariantConst daily = doc["daily"];
+  if (!daily.isNull()) {
+    const JsonArrayConst dates = daily["time"];
+    const JsonArrayConst rises = daily["sunrise"];
+    const JsonArrayConst sets = daily["sunset"];
+    if (!daily.is<JsonObjectConst>() || dates.size() == 0 || dates.size() > kMaxDays ||
+        rises.size() != dates.size() || sets.size() != dates.size()) return false;
+    next.dayCount = dates.size();
+    for (size_t i = 0; i < next.dayCount; ++i) {
+      if (!timestamp(dates[i]) ||
+          (i && dates[i].as<time_t>() <= dates[i - 1].as<time_t>()) ||
+          (!rises[i].isNull() && !timestamp(rises[i])) ||
+          (!sets[i].isNull() && !timestamp(sets[i]))) return false;
+      // Missing events (e.g. polar day/night) are not midnight events.
+      next.days[i].sunrise = rises[i].isNull() ? 0 : rises[i].as<time_t>();
+      next.days[i].sunset = sets[i].isNull() ? 0 : sets[i].as<time_t>();
+    }
+  }
   next.available = true;
   result = next;
   return true;

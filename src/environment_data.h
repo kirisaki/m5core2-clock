@@ -6,6 +6,11 @@
 
 namespace environment {
 constexpr size_t kMaxHours = 48;
+constexpr size_t kMaxDays = 2;
+struct SolarDay {
+  time_t sunrise = 0;
+  time_t sunset = 0;
+};
 struct Hour {
   time_t time = 0;
   int code = -1;
@@ -19,6 +24,8 @@ struct Weather {
   bool isDay = true;
   Hour hours[kMaxHours];
   size_t count = 0;
+  SolarDay days[kMaxDays];
+  size_t dayCount = 0;
 };
 struct Sensor {
   bool available = false;

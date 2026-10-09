@@ -4,6 +4,7 @@
 #include "app_config.h"
 #include "clock_service.h"
 #include "network.h"
+#include "oled.h"
 #include "ui.h"
 
 void setup() {
@@ -19,12 +20,20 @@ void setup() {
   clock_service::begin();
   ui::begin();
   ui::update();
+  oled::begin();
   network::begin();
 }
 
 void loop() {
   M5.update();
   clock_service::update();
+  // One queue consumer shares the same snapshot with both displays.
+  static environment::Snapshot snapshot;
+  if (network::receive(snapshot)) {
+    ui::setData(snapshot);
+    oled::setData(snapshot);
+  }
   ui::update();
+  oled::update();
   delay(10);
 }

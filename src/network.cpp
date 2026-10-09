@@ -90,6 +90,7 @@ bool updateWeather(environment::Weather& weather) {
            "https://api.open-meteo.com/v1/forecast?latitude=%.7f&longitude=%.7f"
            "&current=temperature_2m,weather_code,is_day"
            "&hourly=temperature_2m,weather_code,precipitation_probability,is_day"
+           "&daily=sunrise,sunset"
            "&forecast_days=2&timezone=Asia%%2FTokyo&timeformat=unixtime",
            config::kWeatherLatitude, config::kWeatherLongitude);
   ResponseBuffer body;

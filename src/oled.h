@@ -2,8 +2,8 @@
 
 #include "environment_data.h"
 
-namespace ui {
-bool begin();
+namespace oled {
+void begin();
 void setData(const environment::Snapshot& snapshot);
 void update();
-}  // namespace ui
+}  // namespace oled
