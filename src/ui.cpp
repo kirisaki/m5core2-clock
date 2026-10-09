@@ -37,6 +37,7 @@ constexpr int kForecastNavTop = 193;
 constexpr int kForecastNavBottom = 219;
 constexpr int kBackSwipeEdgeWidth = 24;
 constexpr int kBackSwipeDistance = 50;
+constexpr int kScreenSwipeDistance = 50;
 
 void small(const char* text, int x, int y, uint32_t color = kMuted) {
   canvas.setTextColor(color);
@@ -362,22 +363,49 @@ void ui::update(const app::State& state) {
       dirty = true;
     }
   }
-  if (screen != Screen::Home && (touch.wasFlicked() || touch.wasDragged())) {
+  if ((touch.wasFlicked() || touch.wasDragged()) &&
+      touch.base_x >= 0 && touch.base_x < 320 &&
+      touch.base_y >= 0 && touch.base_y < 240) {
     const int dx = touch.distanceX();
     const int dy = touch.distanceY();
-    const bool fromLeftEdge = touch.base_x >= 0 && touch.base_x < kBackSwipeEdgeWidth &&
-                              touch.base_y >= 0 && touch.base_y < 240;
+    const bool fromLeftEdge = touch.base_x < kBackSwipeEdgeWidth;
     if (fromLeftEdge) {
       // Reserve the edge for Back; short/vertical gestures leave the page alone.
-      if (dx >= kBackSwipeDistance && dx >= 2 * std::abs(dy)) {
+      if (screen != Screen::Home && dx >= kBackSwipeDistance && dx >= 2 * std::abs(dy)) {
         screen = Screen::Home;
         dirty = true;
       }
+    } else if (std::abs(dx) >= kScreenSwipeDistance && std::abs(dx) >= 2 * std::abs(dy)) {
+      // Cycle Home -> History -> each available forecast page -> Home.
+      if (dx < 0) {
+        if (screen == Screen::Home) {
+          screen = Screen::History;
+        } else if (screen == Screen::History) {
+          screen = Screen::Forecast;
+          page = 0;
+        } else if ((page + 1) * kHoursPerPage < forecastCount) {
+          ++page;
+        } else {
+          screen = Screen::Home;
+        }
+      } else {
+        if (screen == Screen::Home) {
+          screen = Screen::Forecast;
+          page = forecastCount ? (forecastCount - 1) / kHoursPerPage : 0;
+        } else if (screen == Screen::History) {
+          screen = Screen::Home;
+        } else if (page) {
+          --page;
+        } else {
+          screen = Screen::History;
+        }
+      }
+      dirty = true;
     } else if (screen == Screen::Forecast &&
-               touch.base_y >= 40 && touch.base_y < kForecastNavTop) {
-      const int movement = std::abs(dx) > std::abs(dy) ? dx : dy;
-      if (movement < -30 && (page + 1) * kHoursPerPage < forecastCount) ++page;
-      if (movement > 30 && page) --page;
+               touch.base_y >= 40 && touch.base_y < kForecastNavTop &&
+               std::abs(dy) > 30 && std::abs(dy) >= 2 * std::abs(dx)) {
+      if (dy < 0 && (page + 1) * kHoursPerPage < forecastCount) ++page;
+      if (dy > 0 && page) --page;
       dirty = true;
     }
   }
