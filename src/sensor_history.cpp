@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-#include "app_config.h"
+#include "data_freshness.h"
 
 void environment::SensorHistory::expire(uint32_t nowMs) {
   while (count_ && nowMs - at(0).receivedMs > kWindowMs) {
@@ -14,8 +14,7 @@ void environment::SensorHistory::expire(uint32_t nowMs) {
 void environment::SensorHistory::observe(const Snapshot& snapshot, uint32_t nowMs) {
   expire(nowMs);
   const auto& sensor = snapshot.sensor;
-  if (!sensor.available || snapshot.sensorError ||
-      static_cast<uint64_t>(sensor.ageMs) + (nowMs - snapshot.sensorReceivedMs) >= config::kSensorStaleMs ||
+  if (!sensor.available || sensorStale(snapshot, nowMs) ||
       !std::isfinite(sensor.temperature) || !std::isfinite(sensor.humidity)) {
     interrupted_ = true;
     return;

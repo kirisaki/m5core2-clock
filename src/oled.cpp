@@ -6,7 +6,7 @@
 #include <cstring>
 
 #include "ambient_info.h"
-#include "app_config.h"
+#include "data_freshness.h"
 #include "clock_service.h"
 
 namespace {
@@ -149,7 +149,7 @@ void dashboard(time_t now, bool valid, const tm& local) {
   creature(ambient::mood(data, millis(), valid && (local.tm_hour >= 23 || local.tm_hour < 6)), millis() / 1000);
   display.drawVLine(44, 0, 64);
   display.setFont(u8g2_font_5x7_tf);
-  const bool stale = data.weatherError || millis() - data.weatherReceivedMs >= config::kWeatherStaleMs;
+  const bool stale = environment::weatherStale(data, millis());
   const bool weatherReady = valid && data.weather.available && !stale;
   rainIcon();
   const auto rain = weatherReady ? ambient::rain(data.weather, now) : ambient::Rain{};

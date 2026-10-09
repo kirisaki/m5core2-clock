@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-#include "app_config.h"
+#include "data_freshness.h"
 
 namespace {
 int rainCode(int code) {
@@ -72,8 +72,7 @@ double ambient::moonAge(time_t now) {
 }
 
 ambient::Mood ambient::mood(const environment::Snapshot& data, uint32_t nowMs, bool night) {
-  if (!data.sensor.available || data.sensorError ||
-      static_cast<uint64_t>(data.sensor.ageMs) + (nowMs - data.sensorReceivedMs) >= config::kSensorStaleMs)
+  if (!data.sensor.available || environment::sensorStale(data, nowMs))
     return Mood::NoData;
   if (data.sensor.temperature < 18) return Mood::Cold;
   if (data.sensor.temperature >= 28) return Mood::Hot;

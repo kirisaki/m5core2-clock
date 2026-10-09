@@ -5,7 +5,7 @@
 #include <ctime>
 #include <cstdlib>
 
-#include "app_config.h"
+#include "data_freshness.h"
 #include "clock_service.h"
 #include "network.h"
 #include "sensor_history.h"
@@ -51,15 +51,6 @@ void formatTime(time_t value, char* text, size_t size) {
   tm local{};
   localtime_r(&value, &local);
   strftime(text, size, "%H:%M", &local);
-}
-
-bool sensorStale() {
-  return data.sensorError ||
-         static_cast<uint64_t>(data.sensor.ageMs) + (millis() - data.sensorReceivedMs) >= config::kSensorStaleMs;
-}
-
-bool weatherStale() {
-  return data.weatherError || millis() - data.weatherReceivedMs >= config::kWeatherStaleMs;
 }
 
 void weatherIcon(int code, int x, int y, bool day = true) {
@@ -172,7 +163,7 @@ void drawHome() {
   canvas.setFont(&fonts::Font2);
   canvas.setTextColor(kText);
   canvas.drawCenterString(humidity, 58, kHomeRowTop + 45);
-  if (data.sensor.available && sensorStale()) small("OLD", 80, kHomeRowTop + 5, 0xFFD166);
+  if (data.sensor.available && environment::sensorStale(data, millis())) small("OLD", 80, kHomeRowTop + 5, 0xFFD166);
 
   small("NOW", 120, kHomeRowTop + 5, kAccent);
   weatherIcon(data.weather.available ? data.weather.current.code : -1, 161, kHomeRowTop + 34, data.weather.isDay);
@@ -181,7 +172,7 @@ void drawHome() {
   const auto* next = clockReady ? environment::nextHour(data.weather, time(nullptr)) : nullptr;
   weatherIcon(next ? next->code : -1, 263, kHomeRowTop + 34, !next || next->isDay != 0);
   temperatureLabel(next ? next->temperature : NAN, next != nullptr, 263, kHomeRowTop + 55);
-  if (data.weather.available && weatherStale()) {
+  if (data.weather.available && environment::weatherStale(data, millis())) {
     small("OLD", 182, kHomeRowTop + 5, 0xFFD166);
     small("OLD", 286, kHomeRowTop + 5, 0xFFD166);
   }
@@ -243,7 +234,7 @@ void drawForecast() {
   formatTime(data.weatherUpdated, updated, sizeof(updated));
   char status[64];
   snprintf(status, sizeof(status), "Updated %s%s", updated,
-           data.weather.available && weatherStale() ? " OLD" : "");
+           data.weather.available && environment::weatherStale(data, millis()) ? " OLD" : "");
   small(status, 12, 220);
   small("Weather: Open-Meteo.com (CC BY 4.0)", 12, 231);
 }
@@ -277,7 +268,7 @@ void drawHistoryPlot(bool temperature, int top, uint32_t nowMs) {
   if (data.sensor.available) {
     snprintf(current, sizeof(current), "%.1f%s%s",
              temperature ? data.sensor.temperature : data.sensor.humidity,
-             temperature ? " C" : " %", sensorStale() ? " OLD" : "");
+             temperature ? " C" : " %", environment::sensorStale(data, millis()) ? " OLD" : "");
   }
   canvas.setFont(&fonts::Font2);
   canvas.setTextColor(color);
