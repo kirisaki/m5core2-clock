@@ -23,8 +23,7 @@ Screen screen = Screen::Home;
 bool dirty = true;
 time_t lastSecond = -1;
 network::Status lastStatus = network::Status::Unconfigured;
-environment::Snapshot data;
-environment::SensorHistory history;
+uint32_t lastRevision = 0;
 size_t forecastIndices[24];
 size_t forecastCount = 0;
 size_t page = 0;
@@ -133,7 +132,7 @@ const char* connectionLabel() {
   }
 }
 
-void drawHome() {
+void drawHome(const environment::Snapshot& data) {
   tm now{};
   const bool clockReady = clock_service::localTime(now);
   char date[32] = "Waiting for time sync";
@@ -188,7 +187,7 @@ void drawHome() {
   small("Weather: Open-Meteo.com (CC BY 4.0)", 12, 231);
 }
 
-void drawForecast() {
+void drawForecast(const environment::Snapshot& data) {
   label("< Back", 12, 10, kAccent);
   label("Next 24 hours", 175, 10);
   if (!forecastCount) {
@@ -239,7 +238,8 @@ void drawForecast() {
   small("Weather: Open-Meteo.com (CC BY 4.0)", 12, 231);
 }
 
-void drawHistoryPlot(bool temperature, int top, uint32_t nowMs) {
+void drawHistoryPlot(const environment::Snapshot& data, const environment::SensorHistory& history,
+                     bool temperature, int top, uint32_t nowMs) {
   constexpr int left = 46;
   constexpr int width = 260;
   constexpr int height = 46;
@@ -301,12 +301,12 @@ void drawHistoryPlot(bool temperature, int top, uint32_t nowMs) {
   if (!history.size()) small("Waiting for sensor data", 89, top + 19);
 }
 
-void drawHistory() {
+void drawHistory(const app::State& state) {
   label("< Back", 12, 10, kAccent);
   label("Room history", 191, 10);
   const uint32_t nowMs = millis();
-  drawHistoryPlot(true, 65, nowMs);
-  drawHistoryPlot(false, 153, nowMs);
+  drawHistoryPlot(state.data(), state.history(), true, 65, nowMs);
+  drawHistoryPlot(state.data(), state.history(), false, 153, nowMs);
   small("-12h", 46, 204);
   small("-6h", 167, 204);
   small("Now", 289, 204);
@@ -326,18 +326,16 @@ bool ui::begin() {
   return ready;
 }
 
-void ui::setData(const environment::Snapshot& snapshot) {
-  data = snapshot;
-  history.observe(data, millis());
-  dirty = true;
-}
-
-void ui::update() {
+void ui::update(const app::State& state) {
   if (!ready) {
     return;
   }
+  const auto& data = state.data();
+  if (state.revision() != lastRevision) {
+    dirty = true;
+    lastRevision = state.revision();
+  }
   const time_t second = time(nullptr);
-  if (second != lastSecond) history.expire(millis());
   forecastCount = environment::upcomingHours(data.weather, second, forecastIndices, 24);
   if (page * kHoursPerPage >= forecastCount) page = 0;
   const auto touch = M5.Touch.getDetail();
@@ -382,11 +380,11 @@ void ui::update() {
   }
   canvas.fillScreen(kBackground);
   if (screen == Screen::Forecast) {
-    drawForecast();
+    drawForecast(data);
   } else if (screen == Screen::History) {
-    drawHistory();
+    drawHistory(state);
   } else {
-    drawHome();
+    drawHome(data);
   }
   canvas.pushSprite(0, 0);
   dirty = false;

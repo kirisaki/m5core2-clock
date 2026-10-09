@@ -25,7 +25,6 @@ constexpr uint8_t kScl = 32;
 U8G2_SSD1309_128X64_NONAME0_F_SW_I2C display(U8G2_R0, kScl, kSda, U8X8_PIN_NONE);
 bool ready = false;
 time_t lastSecond = -1;
-environment::Snapshot data;
 #ifdef CLOCK_OLED_PIN_TEST
 bool swapped = false;
 uint32_t modeStarted = 0;
@@ -145,7 +144,7 @@ void countdown(time_t event, time_t now, char* text, size_t size) {
   else snprintf(text, size, "%uh %02um", minutes / 60, minutes % 60);
 }
 
-void dashboard(time_t now, bool valid, const tm& local) {
+void dashboard(const environment::Snapshot& data, time_t now, bool valid, const tm& local) {
   creature(ambient::mood(data, millis(), valid && (local.tm_hour >= 23 || local.tm_hour < 6)), millis() / 1000);
   display.drawVLine(44, 0, 64);
   display.setFont(u8g2_font_5x7_tf);
@@ -189,7 +188,7 @@ void dashboard(time_t now, bool valid, const tm& local) {
 #endif
 }  // namespace
 
-void oled::begin() {
+void oled::begin(const environment::Snapshot& data) {
   Serial.printf("OLED: external power output %s\n", M5.Power.getExtOutput() ? "enabled" : "disabled");
   uint8_t address = 0x3C;  // Board label 0x78 is the 8-bit write address.
   bool acknowledged = false;
@@ -221,15 +220,11 @@ void oled::begin() {
   modeStarted = millis();
   Serial.printf("OLED pin test: %s\n", testLabel());
 #endif
-  update();
+  update(data);
   Serial.println("OLED: frame sent without ACK checking; check screen visually");
 }
 
-void oled::setData(const environment::Snapshot& snapshot) {
-  data = snapshot;
-}
-
-void oled::update() {
+void oled::update(const environment::Snapshot& data) {
   if (!ready) return;
 #ifdef CLOCK_OLED_PIN_TEST
   if (millis() - modeStarted >= 10000) {
@@ -267,7 +262,7 @@ void oled::update() {
   display.setFont(u8g2_font_6x10_tf);
   centered(testLabel(), 56);
 #else
-  dashboard(second, valid, now);
+  dashboard(data, second, valid, now);
 #endif
 #ifndef CLOCK_OLED_PIN_TEST
   static uint8_t previous[1024];

@@ -2,10 +2,15 @@
 #include <M5Unified.h>
 
 #include "app_config.h"
+#include "app_state.h"
 #include "clock_service.h"
 #include "network.h"
 #include "oled.h"
 #include "ui.h"
+
+namespace {
+app::State state;
+}  // namespace
 
 void setup() {
   auto cfg = M5.config();
@@ -19,8 +24,8 @@ void setup() {
 
   clock_service::begin();
   ui::begin();
-  ui::update();
-  oled::begin();
+  ui::update(state);
+  oled::begin(state.data());
   network::begin();
 }
 
@@ -30,10 +35,10 @@ void loop() {
   // One queue consumer shares the same snapshot with both displays.
   static environment::Snapshot snapshot;
   if (network::receive(snapshot)) {
-    ui::setData(snapshot);
-    oled::setData(snapshot);
+    state.update(snapshot, millis());
   }
-  ui::update();
-  oled::update();
+  state.tick(millis());
+  ui::update(state);
+  oled::update(state.data());
   delay(10);
 }

@@ -1,9 +1,8 @@
 #pragma once
 
-#include "environment_data.h"
+#include "app_state.h"
 
 namespace ui {
 bool begin();
-void setData(const environment::Snapshot& snapshot);
-void update();
+void update(const app::State& state);
 }  // namespace ui
