@@ -35,6 +35,8 @@ constexpr int kForecastGridTop = 46;
 constexpr int kForecastRowHeight = 73;
 constexpr int kForecastNavTop = 193;
 constexpr int kForecastNavBottom = 219;
+constexpr int kBackSwipeEdgeWidth = 24;
+constexpr int kBackSwipeDistance = 50;
 
 void small(const char* text, int x, int y, uint32_t color = kMuted) {
   canvas.setTextColor(color);
@@ -339,7 +341,8 @@ void ui::update(const app::State& state) {
   forecastCount = environment::upcomingHours(data.weather, second, forecastIndices, 24);
   if (page * kHoursPerPage >= forecastCount) page = 0;
   const auto touch = M5.Touch.getDetail();
-  if (touch.wasPressed()) {
+  // Resolve taps on release so a swipe over a button cannot activate it first.
+  if (touch.wasClicked()) {
     if (screen == Screen::Home && touch.x >= 8 && touch.x < 108 &&
         touch.y >= kHomeRowTop && touch.y < kHomeRowTop + kHomeRowHeight) {
       screen = Screen::History;
@@ -359,14 +362,24 @@ void ui::update(const app::State& state) {
       dirty = true;
     }
   }
-  if (screen == Screen::Forecast && (touch.wasFlicked() || touch.wasDragged()) &&
-      touch.base_y >= 40 && touch.base_y < kForecastNavTop) {
+  if (screen != Screen::Home && (touch.wasFlicked() || touch.wasDragged())) {
     const int dx = touch.distanceX();
     const int dy = touch.distanceY();
-    const int movement = std::abs(dx) > std::abs(dy) ? dx : dy;
-    if (movement < -30 && (page + 1) * kHoursPerPage < forecastCount) ++page;
-    if (movement > 30 && page) --page;
-    dirty = true;
+    const bool fromLeftEdge = touch.base_x >= 0 && touch.base_x < kBackSwipeEdgeWidth &&
+                              touch.base_y >= 0 && touch.base_y < 240;
+    if (fromLeftEdge) {
+      // Reserve the edge for Back; short/vertical gestures leave the page alone.
+      if (dx >= kBackSwipeDistance && dx >= 2 * std::abs(dy)) {
+        screen = Screen::Home;
+        dirty = true;
+      }
+    } else if (screen == Screen::Forecast &&
+               touch.base_y >= 40 && touch.base_y < kForecastNavTop) {
+      const int movement = std::abs(dx) > std::abs(dy) ? dx : dy;
+      if (movement < -30 && (page + 1) * kHoursPerPage < forecastCount) ++page;
+      if (movement > 30 && page) --page;
+      dirty = true;
+    }
   }
   const auto status = network::status();
   if (screen == Screen::Home && (second != lastSecond || status != lastStatus)) {
